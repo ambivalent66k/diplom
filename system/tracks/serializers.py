@@ -20,16 +20,40 @@ class TrackSerializer(serializers.ModelSerializer):
     artist_detail = UserSerializer(source='artist', read_only=True)
     genres_detail = GenreSerializer(source='genres', many=True, read_only=True)
     is_liked = serializers.SerializerMethodField()
+    audio_file_url = serializers.SerializerMethodField()
+    cover_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Track
         fields = (
-            'id', 'title', 'artist', 'artist_detail', 'audio_file', 
-            'duration', 'cover_image', 'genres', 'genres_detail', 
+            'id', 'title', 'artist', 'artist_detail', 'audio_file', 'audio_file_url',
+            'duration', 'cover_image', 'cover_image_url', 'genres', 'genres_detail', 
             'description', 'release_date', 'play_count', 'like_count',
             'is_published', 'created_at', 'updated_at', 'is_liked'
         )
         read_only_fields = ('id', 'play_count', 'like_count', 'created_at', 'updated_at')
+    
+    def get_audio_file_url(self, obj):
+        """
+        Возвращает полный URL для аудио файла
+        """
+        if obj.audio_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.audio_file.url)
+            return obj.audio_file.url
+        return None
+    
+    def get_cover_image_url(self, obj):
+        """
+        Возвращает полный URL для обложки
+        """
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
     
     def get_is_liked(self, obj):
         """
@@ -81,11 +105,12 @@ class PlaylistSerializer(serializers.ModelSerializer):
     """
     user_detail = UserSerializer(source='user', read_only=True)
     track_count = serializers.SerializerMethodField()
+    cover_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Playlist
         fields = (
-            'id', 'title', 'user', 'user_detail', 'cover_image',
+            'id', 'title', 'user', 'user_detail', 'cover_image', 'cover_image_url',
             'description', 'is_public', 'created_at', 'updated_at',
             'track_count'
         )
@@ -93,6 +118,17 @@ class PlaylistSerializer(serializers.ModelSerializer):
     
     def get_track_count(self, obj):
         return obj.tracks.count()
+    
+    def get_cover_image_url(self, obj):
+        """
+        Возвращает полный URL для обложки плейлиста
+        """
+        if obj.cover_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.cover_image.url)
+            return obj.cover_image.url
+        return None
 
 
 class PlaylistDetailSerializer(PlaylistSerializer):

@@ -13,7 +13,7 @@ SECRET_KEY = 'django-insecure-vbr^46^w=-&ekia(3qo0#_=wx14orxi-=*0$n(d=hxk(@qy0qg
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']  # Добавлены хосты
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
 
 # Application definition
 
@@ -37,9 +37,9 @@ INSTALLED_APPS = [
     'recommendations',
 ]
 
-# ИСПРАВЛЕНО: правильный порядок middleware
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # ПЕРВЫЙ - это критично!
+    'music_recommender.middleware.RangeRequestMiddleware',  # Для поддержки частичных загрузок аудио
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -103,10 +103,11 @@ USE_I18N = True
 USE_TZ = True
 
 # Static files
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-MEDIA_URL = 'media/'
+# Media files (uploaded content)
+MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
@@ -128,11 +129,11 @@ REST_FRAMEWORK = {
     ],
 }
 
-# CORS настройки - ИСПРАВЛЕНО
+# CORS настройки для аудио файлов
 CORS_ALLOW_ALL_ORIGINS = True  # Для разработки
 CORS_ALLOW_CREDENTIALS = True
 
-# Разрешенные заголовки
+# Разрешенные заголовки - добавлены заголовки для аудио
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -143,6 +144,8 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'range',  # Для поддержки частичной загрузки аудио
+    'if-range',  # Для поддержки диапазонов
 ]
 
 # Разрешенные методы
@@ -155,16 +158,32 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
+# Заголовки, которые клиент может видеть
+CORS_EXPOSE_HEADERS = [
+    'content-length',
+    'content-range',
+    'accept-ranges',
+]
+
 # CSRF настройки
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
 
-# Настройки хранения файлов
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
+# Настройки файлов
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50 MB для аудио файлов
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50 MB
 
-# ДОБАВЛЕНО: Логирование для отладки
+# Поддерживаемые аудио форматы
+AUDIO_FILE_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac']
+MAX_AUDIO_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+# Настройки безопасности для файлов
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None  # Разрешаем cross-origin для аудио
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+# Логирование для отладки
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -179,6 +198,11 @@ LOGGING = {
     },
     'loggers': {
         'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,

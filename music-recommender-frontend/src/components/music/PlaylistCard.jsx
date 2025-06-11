@@ -1,3 +1,4 @@
+// components/music/PlaylistCard.jsx
 import React from 'react';
 import { Play, Music } from 'lucide-react';
 import { PLACEHOLDER_COVER, formatNumber } from '../../utils/constants';
@@ -19,6 +20,9 @@ const PlaylistCard = ({
     if (onClick) onClick(playlist);
   };
   
+  // Используем cover_image_url из API или fallback
+  const coverImage = playlist.cover_image_url || playlist.cover_image || PLACEHOLDER_COVER;
+  
   if (compact) {
     return (
       <div 
@@ -28,9 +32,12 @@ const PlaylistCard = ({
         <div className="flex items-center gap-3">
           <div className="relative">
             <img 
-              src={playlist.cover_image || PLACEHOLDER_COVER} 
+              src={coverImage} 
               alt={playlist.title}
               className="w-10 h-10 object-cover"
+              onError={(e) => {
+                e.target.src = PLACEHOLDER_COVER;
+              }}
             />
             {onPlay && (
               <button 
@@ -63,9 +70,12 @@ const PlaylistCard = ({
       <div className="flex items-center gap-4">
         <div className="relative">
           <img 
-            src={playlist.cover_image || PLACEHOLDER_COVER} 
+            src={coverImage} 
             alt={playlist.title}
             className="w-16 h-16 object-cover"
+            onError={(e) => {
+              e.target.src = PLACEHOLDER_COVER;
+            }}
           />
           {onPlay && (
             <button 

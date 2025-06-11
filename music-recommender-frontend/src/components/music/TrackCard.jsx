@@ -24,15 +24,21 @@ const TrackCard = ({
     onLike(track);
   };
   
+  // Используем cover_image_url из API или fallback
+  const coverImage = track.cover_image_url || track.cover_image || PLACEHOLDER_COVER;
+  
   if (compact) {
     return (
       <div className="group bg-white border border-gray-100 p-3 hover:shadow-lg hover:border-gray-200 transition-all duration-300 cursor-pointer">
         <div className="flex items-center gap-3">
           <div className="relative">
             <img 
-              src={track.cover_image || PLACEHOLDER_COVER} 
+              src={coverImage} 
               alt={track.title}
               className="w-10 h-10 object-cover"
+              onError={(e) => {
+                e.target.src = PLACEHOLDER_COVER;
+              }}
             />
             <button 
               onClick={handlePlay}
@@ -70,9 +76,12 @@ const TrackCard = ({
       <div className="flex items-center gap-4">
         <div className="relative">
           <img 
-            src={track.cover_image || PLACEHOLDER_COVER} 
+            src={coverImage} 
             alt={track.title}
             className="w-12 h-12 object-cover"
+            onError={(e) => {
+              e.target.src = PLACEHOLDER_COVER;
+            }}
           />
           <button 
             onClick={handlePlay}

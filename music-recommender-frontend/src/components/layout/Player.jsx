@@ -1,5 +1,5 @@
 // components/layout/Player.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Heart, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { PLACEHOLDER_COVER, formatDuration } from '../../utils/constants';
 
@@ -16,59 +16,171 @@ const Player = ({
   const [progress, setProgress] = useState(0);
   const [volume, setVolume] = useState(70);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   
-  // Simulate progress update
+  // Ref для аудио элемента
+  const audioRef = useRef(null);
+  
+  // Инициализация аудио при изменении трека
   useEffect(() => {
-    let interval;
-    if (isPlaying && currentTrack) {
-      interval = setInterval(() => {
-        setCurrentTime(prev => {
-          const newTime = prev + 1;
-          const progressPercent = (newTime / currentTrack.duration) * 100;
-          setProgress(Math.min(progressPercent, 100));
-          
-          // Auto next track when finished
-          if (newTime >= currentTrack.duration) {
-            onNext();
-            return 0;
-          }
-          
-          return newTime;
-        });
-      }, 1000);
-    }
+    if (!currentTrack || !audioRef.current) return;
     
-    return () => clearInterval(interval);
-  }, [isPlaying, currentTrack, onNext]);
-  
-  // Reset progress when track changes
-  useEffect(() => {
-    setProgress(0);
+    const audio = audioRef.current;
+    
+    // Сброс состояния
     setCurrentTime(0);
+    setProgress(0);
+    setDuration(0);
+    setError(null);
+    setIsLoading(true);
+    
+    // Используем полный URL из API или формируем его
+    const audioUrl = currentTrack.audio_file_url || 
+      (currentTrack.audio_file?.startsWith('http') 
+        ? currentTrack.audio_file 
+        : `http://localhost:8000${currentTrack.audio_file}`);
+    
+    // Устанавливаем источник аудио
+    audio.src = audioUrl;
+    audio.load();
+    
+    // Отправляем запрос на сервер о начале воспроизведения
+    fetch('http://localhost:8000/api/tracks/' + currentTrack.id + '/play/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Token ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        interaction_data: { started_at: new Date().toISOString() }
+      })
+    }).catch(console.error);
+    
   }, [currentTrack?.id]);
   
-  if (!currentTrack || isHidden) return null;
+  // Управление воспроизведением
+  useEffect(() => {
+    if (!audioRef.current || !currentTrack) return;
+    
+    const audio = audioRef.current;
+    
+    if (isPlaying && !error) {
+      audio.play().catch(err => {
+        console.error('Ошибка воспроизведения:', err);
+        setError('Не удалось воспроизвести трек');
+      });
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, currentTrack?.id, error]);
   
+  // Управление громкостью
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume / 100;
+    }
+  }, [volume]);
+  
+  // Обработчики событий аудио
+  const handleLoadStart = () => {
+    setIsLoading(true);
+    setError(null);
+  };
+  
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      const audioDuration = audioRef.current.duration;
+      setDuration(audioDuration);
+      setIsLoading(false);
+    }
+  };
+  
+  const handleTimeUpdate = () => {
+    if (audioRef.current && duration > 0) {
+      const audio = audioRef.current;
+      const currentTime = audio.currentTime;
+      const progressPercent = (currentTime / duration) * 100;
+      
+      setCurrentTime(currentTime);
+      setProgress(progressPercent);
+    }
+  };
+  
+  const handleEnded = () => {
+    setProgress(100);
+    setCurrentTime(duration);
+    
+    // Отправляем информацию о завершении прослушивания
+    if (currentTrack) {
+      fetch('http://localhost:8000/api/tracks/' + currentTrack.id + '/play/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          listen_percentage: 100,
+          interaction_data: { 
+            completed_at: new Date().toISOString(),
+            duration: duration 
+          }
+        })
+      }).catch(console.error);
+    }
+    
+    // Автоматически переключаем на следующий трек
+    onNext();
+  };
+  
+  const handleError = (e) => {
+    console.error('Ошибка загрузки аудио:', e);
+    setError('Ошибка загрузки аудио файла');
+    setIsLoading(false);
+  };
+  
+  const handleCanPlay = () => {
+    setIsLoading(false);
+    setError(null);
+  };
+  
+  const handleWaiting = () => {
+    setIsLoading(true);
+  };
+  
+  const handleCanPlayThrough = () => {
+    setIsLoading(false);
+  };
+  
+  // Обработка клика по прогресс-бару
   const handleProgressClick = (e) => {
+    if (!audioRef.current || !duration) return;
+    
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const newProgress = (clickX / rect.width) * 100;
-    const newTime = (newProgress / 100) * currentTrack.duration;
+    const newTime = (newProgress / 100) * duration;
     
-    setProgress(newProgress);
+    audioRef.current.currentTime = newTime;
     setCurrentTime(newTime);
+    setProgress(newProgress);
   };
   
+  // Обработка изменения громкости
   const handleVolumeChange = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const newVolume = (clickX / rect.width) * 100;
-    setVolume(Math.max(0, Math.min(100, newVolume)));
+    const newVolume = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
+    setVolume(newVolume);
   };
   
-  // Minimized floating player
+  // Если нет трека или скрыт
+  if (!currentTrack || isHidden) return null;
+  
+  // Минимизированный плеер
   if (isMinimized) {
     return (
       <div className="fixed bottom-4 right-4 bg-white border border-gray-200 shadow-lg p-3 z-30 w-80">
@@ -96,9 +208,16 @@ const Player = ({
             
             <button 
               onClick={onPlayPause}
-              className="p-2 bg-black text-white hover:bg-gray-800 transition-colors"
+              className="p-2 bg-black text-white hover:bg-gray-800 transition-colors relative"
+              disabled={isLoading || error}
             >
-              {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+              {isLoading ? (
+                <div className="w-3 h-3 border border-white border-t-transparent animate-spin" />
+              ) : isPlaying ? (
+                <Pause className="w-3 h-3" />
+              ) : (
+                <Play className="w-3 h-3 ml-0.5" />
+              )}
             </button>
             
             <button 
@@ -139,11 +258,16 @@ const Player = ({
             />
           </div>
         </div>
+        
+        {/* Error message */}
+        {error && (
+          <div className="mt-1 text-xs text-red-500">{error}</div>
+        )}
       </div>
     );
   }
   
-  // Full player view
+  // Полный плеер
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-20">
       {/* Progress Bar */}
@@ -159,9 +283,16 @@ const Player = ({
         </div>
         <div className="flex justify-between text-xs text-gray-500 mt-1">
           <span>{formatDuration(Math.floor(currentTime))}</span>
-          <span>{formatDuration(currentTrack.duration)}</span>
+          <span>{formatDuration(Math.floor(duration))}</span>
         </div>
       </div>
+      
+      {/* Error Message */}
+      {error && (
+        <div className="mb-3 text-center text-sm text-red-500 bg-red-50 p-2 rounded">
+          {error}
+        </div>
+      )}
       
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         {/* Track Info */}
@@ -199,9 +330,16 @@ const Player = ({
           
           <button 
             onClick={onPlayPause}
-            className="p-3 bg-black text-white hover:bg-gray-800 transition-colors"
+            className="p-3 bg-black text-white hover:bg-gray-800 transition-colors relative"
+            disabled={isLoading || error}
           >
-            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+            {isLoading ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="w-5 h-5" />
+            ) : (
+              <Play className="w-5 h-5 ml-0.5" />
+            )}
           </button>
           
           <button 
@@ -247,6 +385,21 @@ const Player = ({
           </div>
         </div>
       </div>
+      
+      {/* HTML5 Audio Element */}
+      <audio
+        ref={audioRef}
+        onLoadStart={handleLoadStart}
+        onLoadedMetadata={handleLoadedMetadata}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+        onError={handleError}
+        onCanPlay={handleCanPlay}
+        onWaiting={handleWaiting}
+        onCanPlayThrough={handleCanPlayThrough}
+        preload="metadata"
+        crossOrigin="anonymous"
+      />
     </div>
   );
 };

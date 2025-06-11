@@ -1,7 +1,7 @@
 // hooks/usePlayer.js
 import { useState, useCallback, useEffect } from 'react';
-import { tracksAPI, recommendationsAPI } from '../services/api';
-import { STORAGE_KEYS, INTERACTION_TYPES } from '../utils/constants';
+import { tracksAPI } from '../services/api';
+import { STORAGE_KEYS } from '../utils/constants';
 
 export const usePlayer = () => {
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -40,8 +40,10 @@ export const usePlayer = () => {
   
   const playTrack = useCallback(async (track, newQueue = []) => {
     try {
-      // Register play interaction with API
-      await tracksAPI.playTrack(track.id);
+      // Register play interaction with API (will be handled by Player component as well)
+      await tracksAPI.playTrack(track.id, {
+        started_at: new Date().toISOString()
+      });
       
       setCurrentTrack(track);
       setIsPlaying(true);
@@ -73,8 +75,10 @@ export const usePlayer = () => {
     let nextIndex;
     
     if (shuffle) {
-      // Random next track
-      nextIndex = Math.floor(Math.random() * queue.length);
+      // Random next track (excluding current)
+      const availableIndices = queue.map((_, index) => index).filter(index => index !== currentIndex);
+      if (availableIndices.length === 0) return;
+      nextIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
     } else {
       // Sequential next track
       nextIndex = currentIndex + 1;
@@ -96,9 +100,12 @@ export const usePlayer = () => {
       savePlayerState(nextTrack, queue, nextIndex);
       
       // Register play
-      tracksAPI.playTrack(nextTrack.id).catch(console.error);
+      tracksAPI.playTrack(nextTrack.id, {
+        started_at: new Date().toISOString(),
+        previous_track: currentTrack?.id
+      }).catch(console.error);
     }
-  }, [queue, currentIndex, shuffle, repeat, savePlayerState]);
+  }, [queue, currentIndex, shuffle, repeat, savePlayerState, currentTrack]);
   
   const previousTrack = useCallback(() => {
     if (queue.length === 0) return;
@@ -106,8 +113,10 @@ export const usePlayer = () => {
     let prevIndex;
     
     if (shuffle) {
-      // Random previous track
-      prevIndex = Math.floor(Math.random() * queue.length);
+      // Random previous track (excluding current)
+      const availableIndices = queue.map((_, index) => index).filter(index => index !== currentIndex);
+      if (availableIndices.length === 0) return;
+      prevIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
     } else {
       // Sequential previous track
       prevIndex = currentIndex - 1;
@@ -129,19 +138,33 @@ export const usePlayer = () => {
       savePlayerState(prevTrack, queue, prevIndex);
       
       // Register play
-      tracksAPI.playTrack(prevTrack.id).catch(console.error);
+      tracksAPI.playTrack(prevTrack.id, {
+        started_at: new Date().toISOString(),
+        previous_track: currentTrack?.id
+      }).catch(console.error);
     }
-  }, [queue, currentIndex, shuffle, repeat, savePlayerState]);
+  }, [queue, currentIndex, shuffle, repeat, savePlayerState, currentTrack]);
   
   const addToQueue = useCallback((tracks) => {
     const tracksArray = Array.isArray(tracks) ? tracks : [tracks];
-    setQueue(prev => [...prev, ...tracksArray]);
-  }, []);
+    const newQueue = [...queue, ...tracksArray];
+    setQueue(newQueue);
+    
+    // Update saved state if there's a current track
+    if (currentTrack) {
+      savePlayerState(currentTrack, newQueue, currentIndex);
+    }
+  }, [queue, currentTrack, currentIndex, savePlayerState]);
   
   const clearQueue = useCallback(() => {
     setQueue([]);
     setCurrentIndex(0);
-  }, []);
+    
+    // Update saved state
+    if (currentTrack) {
+      savePlayerState(currentTrack, [], 0);
+    }
+  }, [currentTrack, savePlayerState]);
   
   const setPlayQueue = useCallback((tracks, startIndex = 0) => {
     setQueue(tracks);
@@ -158,6 +181,16 @@ export const usePlayer = () => {
   
   const toggleRepeat = useCallback(() => {
     setRepeat(prev => !prev);
+  }, []);
+  
+  // Method to handle track completion (called by Player component)
+  const onTrackCompleted = useCallback((completedTrack, listenPercentage = 100) => {
+    // Send completion data to API
+    tracksAPI.playTrack(completedTrack.id, {
+      listen_percentage: listenPercentage,
+      completed_at: new Date().toISOString(),
+      duration: completedTrack.duration
+    }).catch(console.error);
   }, []);
   
   return {
@@ -180,5 +213,6 @@ export const usePlayer = () => {
     setPlayQueue,
     toggleShuffle,
     toggleRepeat,
+    onTrackCompleted,
   };
 };
